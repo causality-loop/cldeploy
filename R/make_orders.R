@@ -28,6 +28,7 @@ make_orders <- function(model_funs, model_units, max_units, wealth_scale,
     , symbol := sub('RWX', 'VNQI', symbol)][
     , symbol := sub('TLT', 'SPTL', symbol)][
     , symbol := sub('GLD', 'GLDM', symbol)][
+    , symbol := sub('FXI', 'MCHI', symbol)][
     , symbol := sub('DBC', 'PDBC', symbol)]
 
   if (length(asset_nav[, symbol]) > 0) {

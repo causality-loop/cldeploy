@@ -10,7 +10,6 @@ make_orders <- function(model_funs, model_units, max_units, wealth_scale,
   full_path_to_td_credentials)
 {
 
-  clhelpers::get_td_access(full_path_to_td_credentials)
   account <- rameritrade::td_accountData()
   wealth <- account$balances$liquidationValue * wealth_scale
   asset_units <- make_deploy_units(model_funs = model_funs, 

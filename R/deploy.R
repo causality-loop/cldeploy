@@ -5,7 +5,7 @@
 #' @param model_units numeric, a numeric of length equal to model_funs, indicating the number of units to allocate to each model, where the first value entered corresponds to the first (leftmost) model function call, and so on until either series is complete
 #' @param max_units numeric, the maximum number of units which may be allocated to the portfolio, Default: 2.5
 #' @param wealth_scale numeric, from 0-1, what percentage of wealth should be allocated to the portfolio, Default: 1.0
-#' @param full_path_to_td_credientials character, the full path to the directory containg the files essential for API access (see References below), Default: '~/td'
+#' @param full_path_to_td_credentials character, the full path to the directory containg the files essential for API access (see References below), Default: '~/td'
 #' @return Nothing, unless to_execute = 'report', in which case output is a list of data tables, a matrix, and a numeric which indicate, respectively, assets to sell/buy, VIX EMA value, and the BAV SMA value.
 #' @details Run this every day at 15:59 using a cronjob.  Use in conjuction with with the updateprices and clmodels packages.
 #' @references
@@ -26,7 +26,7 @@
 #'  ## scale in when this strategy is still fresh
 #'  deploy(wealth_scale = 0.5)
 #'  ## the path can end with a slash, or not
-#'  deploy(full_path_to_td_credientials = '~/td/')
+#'  deploy(full_path_to_td_credentials = '~/td/')
 #'  }
 #' }
 #' @export 
@@ -38,7 +38,7 @@ deploy <- function(
   model_units = c(1, 1, 1, 1.5),
   max_units = 2.5,
   wealth_scale = 1.0,
-  full_path_to_td_credientials = '~/td')
+  full_path_to_td_credentials = '~/td')
 {
 
   # set timezone on gnu/linux
@@ -60,11 +60,11 @@ deploy <- function(
   if (any(model_units <= 0)) stop('model_units should be > 0')
   if (wealth_scale > 1) stop('wealth_scale should be <= 1')
   if (wealth_scale <= 0) stop('wealth_scale should be > 0')
-  if (!dir.exists(full_path_to_td_credientials))
-    stop('full_path_to_td_credientials does not exist')
+  if (!dir.exists(full_path_to_td_credentials))
+    stop('full_path_to_td_credentials does not exist')
 
   fp_files <- c('consumerKey.rds', 'refreshToken.rds')
-  full_path <- clhelpers::adj_path(full_path_to_td_credientials)
+  full_path <- clhelpers::adj_path(full_path_to_td_credentials)
 
   if (!all(fp_files %in% list.files(full_path)))
     stop('Please add necessary files to TD directory (see documentation)')

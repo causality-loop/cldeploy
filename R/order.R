@@ -13,7 +13,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
     max_units = max_units, wealth_scale = wealth_scale,
     full_path_to_td_credentials = full_path_to_td_credentials)
 
-	# do not include account info in output
+  # do not include account info in output
   if (!trade) return(order_list[1:2])
 
   get_quote <- function(symbol) {

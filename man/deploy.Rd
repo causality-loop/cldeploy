@@ -10,7 +10,7 @@ deploy(
   model_units = c(1, 1, 1, 1.5),
   max_units = 2.5,
   wealth_scale = 1,
-  full_path_to_td_credientials = "~/td"
+  full_path_to_td_credentials = "~/td"
 )
 }
 \arguments{
@@ -24,7 +24,7 @@ deploy(
 
 \item{wealth_scale}{numeric, from 0-1, what percentage of wealth should be allocated to the portfolio, Default: 1.0}
 
-\item{full_path_to_td_credientials}{character, the full path to the directory containg the files essential for API access (see References below), Default: '~/td'}
+\item{full_path_to_td_credentials}{character, the full path to the directory containg the files essential for API access (see References below), Default: '~/td'}
 }
 \value{
 Nothing, unless to_execute = 'report', in which case output is a list of data tables, a matrix, and a numeric which indicate, respectively, assets to sell/buy, VIX EMA value, and the BAV SMA value.
@@ -51,7 +51,7 @@ if(interactive()){
  ## scale in when this strategy is still fresh
  deploy(wealth_scale = 0.5)
  ## the path can end with a slash, or not
- deploy(full_path_to_td_credientials = '~/td/')
+ deploy(full_path_to_td_credentials = '~/td/')
  }
 }
 }

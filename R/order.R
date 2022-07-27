@@ -1,17 +1,28 @@
 .datatable.aware = TRUE 
 if (getRversion() >= '2.15.1') 
-  utils::globalVariables(c('.', 'Qty', 'maintenanceRequirement', 'marketValue'), utils::packageName()) 
+  utils::globalVariables(c(
+    '.', 'Qty', 'maintenanceRequirement', 'marketValue'), 
+    utils::packageName()) 
 
 #' @importFrom data.table ':='
 #' @importFrom magrittr '%T>%' '%<>%'
+#' @importFrom clhelpers append_log
 
-order <- function(trade, model_funs, model_units, max_units, wealth_scale, 
-  full_path_to_td_credentials, dates)
+order <- function(
+  trade, 
+  model_info,
+  max_units,
+  wealth_scale, 
+  full_path_to_td_credentials)
 {
 
-  order_list <- make_orders(model_funs = model_funs, model_units = model_units,
-    max_units = max_units, wealth_scale = wealth_scale,
+  clhelpers::append_log('Start order_list')
+  order_list <- make_orders(
+    model_info = model_info, 
+    max_units = max_units, 
+    wealth_scale = wealth_scale,
     full_path_to_td_credentials = full_path_to_td_credentials)
+  clhelpers::append_log('End order_list')
 
   # do not include account info in output
   if (!trade) return(order_list[1:2])
@@ -49,6 +60,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
     cat('\nWaiting for SELL orders to process (10 sec)\n\n')
     Sys.sleep(10)
   }
+  clhelpers::append_log('SELL')
 
   # buys
   buy_dt <- order_list$BUY
@@ -65,6 +77,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
     cat('\nWaiting for BUY orders to process (10 sec)\n\n')
     Sys.sleep(10)
   }
+  clhelpers::append_log('BUY')
 
   account <- rameritrade::td_accountData()
   account_info <- data.table::data.table(account$balances)[
@@ -80,6 +93,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
   } else {
     buy_info <- 'tacit'
   }
+  clhelpers::append_log('Buy info')
 
   if (length(security_info_sells) > 0) {
     sell_info <- lapply(security_info_sells, function(x) {
@@ -90,6 +104,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
   } else {
     sell_info <- 'tacit'
   }
+  clhelpers::append_log('Sell info')
 
   trade_info <- c(buy_info, sell_info)
 
@@ -100,6 +115,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
       data.table::setnames('instrument.symbol', 'symbol') %>%
       data.table::setcolorder(c('date', 'symbol', 'borrowStatus'))
   } else pos_info <- 'tacit' 
+  clhelpers::append_log('Position info')
 
   if (length(account$orders$orderEntry) > 0) {
     order_entry_info <-
@@ -107,12 +123,14 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
       , date := Sys.Date()] %>%
       data.table::setcolorder('date')
   } else order_entry_info <- 'tacit'
+  clhelpers::append_log('Order entry info')
 
   if (length(account$orders$orderExecution) > 0) {
     order_exec_info <- data.table::data.table(account$orders$orderExecution)[
       , date := Sys.Date()] %>%
       data.table::setcolorder('date')
   } else order_exec_info <- 'tacit'
+  clhelpers::append_log('Order execution info')
 
   trade_report <- list(
     trade = trade_info,
@@ -123,7 +141,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
     input_data = order_list[1:2]) %>% 
     list %>% 
     `names<-`(Sys.Date())
-
+  clhelpers::append_log('Trade report made')
 
   if (file.exists(file.path(full_path_to_td_credentials, 'tradeReport.rds'))) {
 
@@ -136,5 +154,7 @@ order <- function(trade, model_funs, model_units, max_units, wealth_scale,
 
   saveRDS(trade_report, 
     file.path(full_path_to_td_credentials, 'tradeReport.rds'))
+
+  clhelpers::append_log('Trade report saved')
 
 }

@@ -1,15 +1,17 @@
 .datatable.aware = TRUE 
 if (getRversion() >= '2.15.1') 
   utils::globalVariables(c('.', 'asset_units', 'model', 'to_subtract', 
-      'symbol', 'the_ratio', 'adj_model_units'), utils::packageName()) 
+    'symbol', 'the_ratio', 'adj_model_units', 'model_units'), 
+    utils::packageName()) 
 
 #' @importFrom data.table ':='
+#' @import clmodels
 
-make_deploy_units <- function(model_funs, model_units, max_units)
+make_deploy_units <- function(model_info, max_units)
 {
 
-  asset_units_list <- lapply(seq(model_funs), function(x) {
-    model_funs[[x]](model_units = model_units[x])
+  asset_units_list <- lapply(names(model_info), function(x) {
+    get(x)(model_info[x])
   })
 
   model_asset_units_dt <- lapply(seq(asset_units_list), function(x) {

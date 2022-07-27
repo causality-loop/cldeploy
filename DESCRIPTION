@@ -15,6 +15,12 @@ Imports:
     magrittr,
     rameritrade,
     lubridate,
-    clhelpers
+    xts,
+    zoo,
+    clhelpers,
+    clmodels,
+    updateprices
 Remotes:
-    causality-loop/clhelpers
+    causality-loop/clhelpers,
+    causality-loop/clmodels,
+    causality-loop/updateprices

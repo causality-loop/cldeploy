@@ -6,8 +6,7 @@
 \usage{
 deploy(
   to_execute = "cron",
-  model_funs = c(clmodels::BAV, clmodels::GAN, clmodels::VIM, clmodels::CAN),
-  model_units = c(1, 1, 1, 1.5),
+  model_info = c(CAN = 1.5, GAN = 1, KDA_no_treasuries = 1.5),
   max_units = 2.5,
   wealth_scale = 1,
   full_path_to_td_credentials = "~/td"
@@ -16,9 +15,7 @@ deploy(
 \arguments{
 \item{to_execute}{character, either 'cron', 'force', or 'report', Default: 'cron'}
 
-\item{model_funs}{vector, the unquoted function calls (without parenthesis) for each model}
-
-\item{model_units}{numeric, a numeric of length equal to model_funs, indicating the number of units to allocate to each model, where the first value entered corresponds to the first (leftmost) model function call, and so on until either series is complete}
+\item{model_info}{numeric, a \emph{named} vector of model units where the name of each element matches the name of a model function from the \emph{clmodels} package; the corresponding numeric itself being the number of units to allocate to that particular model (see \emph{Examples})}
 
 \item{max_units}{numeric, the maximum number of units which may be allocated to the portfolio, Default: 2.5}
 

@@ -1,8 +1,12 @@
+if (getRversion() >= '2.15.1') 
+  utils::globalVariables(c('.', 'Date'), utils::packageName())
+
+#' @importFrom magrittr '%<>%' '%$%'
+
 #' @title deploy
 #' @description Auto-trade with TD's API.
 #' @param to_execute character, either 'cron', 'force', or 'report', Default: 'cron'
-#' @param model_funs vector, the unquoted function calls (without parenthesis) for each model
-#' @param model_units numeric, a numeric of length equal to model_funs, indicating the number of units to allocate to each model, where the first value entered corresponds to the first (leftmost) model function call, and so on until either series is complete
+#' @param model_info numeric, a *named* vector of model units where the name of each element matches the name of a model function from the *clmodels* package; the corresponding numeric itself being the number of units to allocate to that particular model (see *Examples*)
 #' @param max_units numeric, the maximum number of units which may be allocated to the portfolio, Default: 2.5
 #' @param wealth_scale numeric, from 0-1, what percentage of wealth should be allocated to the portfolio, Default: 1.0
 #' @param full_path_to_td_credentials character, the full path to the directory containg the files essential for API access (see References below), Default: '~/td'
@@ -31,112 +35,136 @@
 #' }
 #' @export 
 #' @importFrom lubridate year hour
-#' @importFrom clhelpers adj_path
+#' @importFrom xts xts
+#' @importFrom zoo index
+#' @importFrom clhelpers adj_path append_log
+#' @importFrom updateprices update_prices
 deploy <- function(
   to_execute = 'cron',
-  model_funs = c(clmodels::BAV, clmodels::GAN, clmodels::VIM, clmodels::CAN),
-  model_units = c(1, 1, 1, 1.5),
+  model_info = c('CAN' = 1.5, 'GAN' = 1, 'KDA_no_treasuries' = 1.5),
   max_units = 2.5,
   wealth_scale = 1.0,
   full_path_to_td_credentials = '~/td')
 {
+
+  # clean inputs
+  if (missing(to_execute)) to_execute <- 'cron'
+  if (to_execute %ni% c('cron', 'force', 'report', 'check'))
+    stop("to_execute should be either 'cron', 'force', 'report', or 'check'")
+  if (length(model_info) <= 0)
+    stop('Length of model_info should be > 0')
+  if (max_units <= 0) stop('max_units should be > 0')
+  if (any(model_info > max_units)) stop('model_info cannot exceed max_units')
+  if (any(model_info <= 0)) stop('model_info should be > 0')
+  if (wealth_scale > 1) stop('wealth_scale should be <= 1')
+  if (wealth_scale <= 0) stop('wealth_scale should be > 0')
+  if (!dir.exists(full_path_to_td_credentials))
+    stop('full_path_to_td_credentials does not exist')
+  fp_files <- c('consumerKey.rds', 'refreshToken.rds')
+  full_path_to_td_credentials %<>% clhelpers::adj_path()
+  if (!all(fp_files %in% list.files(full_path_to_td_credentials)))
+    stop('Please add necessary files to TD directory (see documentation)')
+
+  # set up logging
+
+  clhelpers::append_log('Inputs')
 
   # set timezone on gnu/linux
   if (!(Sys.timezone() == 'America/New_York')) {
     system('timedatectl set-timezone America/New_York')
     cat('\nYour system timezone has been changed to America/New_York\n\n')
   }
+  clhelpers::append_log('TZ')
 
-  # clean argument inputs
-  if (missing(to_execute)) to_execute <- 'cron'
-  if (to_execute %ni% c('cron', 'force', 'report'))
-    stop("to_execute should be either 'cron', 'force', or 'report'")
-  if (length(model_funs) != length(model_units))
-    stop('model_funs and model_units should be of equal length')
-  if (!any(sapply(model_funs, is.function)))
-    stop('model_funs should be functions (see source code or function help)')
-  if (max_units <= 0) stop('max_units should be > 0')
-  if (any(model_units > max_units)) stop('model_units cannot exceed max_units')
-  if (any(model_units <= 0)) stop('model_units should be > 0')
-  if (wealth_scale > 1) stop('wealth_scale should be <= 1')
-  if (wealth_scale <= 0) stop('wealth_scale should be > 0')
-  if (!dir.exists(full_path_to_td_credentials))
-    stop('full_path_to_td_credentials does not exist')
-
-  fp_files <- c('consumerKey.rds', 'refreshToken.rds')
-  full_path <- clhelpers::adj_path(full_path_to_td_credentials)
-
-  if (!all(fp_files %in% list.files(full_path)))
-    stop('Please add necessary files to TD directory (see documentation)')
-
-  # dates handling
-  ## make dates if it doesn't exist
+  # handle dates
   if (!dir.exists('data')) dir.create('data')
   if (!file.exists('data/dates.rds')) clhelpers::make_dates()
   dates <- readRDS('data/dates.rds')
 
-  ## if the dates rds is from last year, update
+  # if the dates rds is from last year, update
   if (lubridate::year(Sys.Date()) != lubridate::year(dates[[1]][1])) {
     clhelpers::make_dates()
     dates <- readRDS('data/dates.rds')
   }
+  clhelpers::append_log('Dates')
+
+  # handle prices
+  clhelpers::get_td_access(full_path_to_td_credentials)
+  clhelpers::append_log('TD access')
+
+  # rbind recent OHLC with td_priceQuote as it's faster than quantmod::getQuote()
+  # and certainly faster than running updateprices::update_prices()
+  for (i in list.files('prices')) {
+    old_ohlcv <- readRDS(file.path('prices', i))
+
+    new_ohlcv <- rameritrade::td_priceQuote(i)[
+      ,c('openPrice', 'highPrice', 'lowPrice', 'lastPrice')] %>%
+      cbind(Volume = NA, Adjusted = NA, Date = Sys.Date()) %$%
+      xts::xts(.[,1:6], Date)
+
+    # in case prices were updated same day
+    out <- rbind(old_ohlcv, new_ohlcv) %>% 
+      .[!base::duplicated(zoo::index(.), fromLast = TRUE), ]
+
+    # this will be saved for now, then when update_prices() is run PM/AM,
+    # the duplicated entry will be removed
+    saveRDS(out, file.path('prices', i))
+  }
+  clhelpers::append_log('Recent OHLC')
 
   # determine if the market is open and if there is a 13h close
   market_open <- Sys.Date() %in% dates$market_open_dates
   early_close <- Sys.Date() %in% dates$early_close_dates
+  is_cron <- to_execute == 'cron'
+  is_force <- to_execute == 'force'
+  sys_hour <- lubridate::hour(Sys.time())
+  sys_min <- lubridate::minute(Sys.time())
+  is_early_cl <- sys_min>=55 & market_open & sys_hour==12 & early_close
+  is_normal_cl <- sys_min>=55 & market_open & sys_hour==15 & !early_close
+  clhelpers::append_log('Market op/cl')
 
   # run order()
-  clhelpers::get_td_access(full_path)
+  if ( (is_cron & (is_early_cl | is_normal_cl)) | is_force ) {
 
-  if (to_execute == 'cron') {
-
-    if (lubridate::hour(Sys.time()) == 12 & market_open & early_close) {
-
-      order(
-        trade = TRUE, 
-        model_funs = model_funs, 
-        model_units = model_units, 
-        max_units = max_units,
-        wealth_scale = wealth_scale, 
-        full_path_to_td_credentials = full_path, 
-        dates = dates)
-
-    } else if (lubridate::hour(Sys.time()) == 15 & market_open & !early_close) {
-
-      order(
-        trade = TRUE, 
-        model_funs = model_funs, 
-        model_units = model_units, 
-        max_units = max_units,
-        wealth_scale = wealth_scale, 
-        full_path_to_td_credentials = full_path, 
-        dates = dates)
-
-    } else cat('\nAutotrade temporal conditions not met; nothing was done\n\n')
-
-  } else if (to_execute == 'force') {
-
+    clhelpers::append_log('Start order(\'CRON or FORCE\')')
     order(
       trade = TRUE, 
-      model_funs = model_funs, 
-      model_units = model_units, 
+      model_info = model_info, 
       max_units = max_units,
       wealth_scale = wealth_scale, 
-      full_path_to_td_credentials = full_path, 
-      dates = dates)
+      full_path_to_td_credentials = full_path_to_td_credentials) 
+    clhelpers::append_log('End order(\'CRON or FORCE\')')
 
   } else if (to_execute == 'report') {
 
+    clhelpers::append_log('Start order(\'REPORT\')')
     order(
       trade = FALSE, 
-      model_funs = model_funs, 
-      model_units = model_units, 
+      model_info = model_info, 
       max_units = max_units,
       wealth_scale = wealth_scale, 
-      full_path_to_td_credentials = full_path, 
-      dates = dates)
+      full_path_to_td_credentials = full_path_to_td_credentials)
+    clhelpers::append_log('End order(\'REPORT\')')
+
+  } else if (to_execute == 'check') {
+
+    clhelpers::append_log('Start CHECK')
+    # fix incomplete OHLCV series
+    for (i in list.files('prices')) {
+      prior_market_open_dates <- dates$market_open_dates %>% .[. < Sys.Date()] 
+      ohlcv <- readRDS(file.path('prices', i))
+      if ( any(prior_market_open_dates %ni% zoo::index(ohlcv)) )
+        updateprices::update_prices(i)
+    }
+    clhelpers::append_log('End CHECK')
+
+  } else {
+
+    cat('\nAutotrade temporal conditions not met; nothing was done\n\n')
 
   }
+
+  clhelpers::append_log('===COMPLETE===')
 
 }
 

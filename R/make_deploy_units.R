@@ -6,7 +6,6 @@ if (getRversion() >= '2.15.1')
 
 #' @importFrom data.table ':='
 #' @import clmodels
-
 make_deploy_units <- function(model_info, max_units)
 {
 

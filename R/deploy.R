@@ -39,6 +39,7 @@ if (getRversion() >= '2.15.1')
 #' @importFrom zoo index
 #' @importFrom clhelpers adj_path append_log
 #' @importFrom updateprices update_prices
+#' @importFrom parallel mclapply
 deploy <- function(
   to_execute = 'cron',
   model_info = c('CAN' = 1.5, 'GAN' = 1, 'KDA_no_treasuries' = 1.5),
@@ -47,10 +48,12 @@ deploy <- function(
   full_path_to_td_credentials = '~/td')
 {
 
+  clhelpers::append_log('===START===')
+
   # clean inputs
   if (missing(to_execute)) to_execute <- 'cron'
-  if (to_execute %ni% c('cron', 'force', 'report', 'check'))
-    stop("to_execute should be either 'cron', 'force', 'report', or 'check'")
+  if (to_execute %ni% c('cron', 'force', 'report', 'price_update'))
+    stop("to_execute should be either 'cron', 'force', 'report', or 'price_update'")
   if (length(model_info) <= 0)
     stop('Length of model_info should be > 0')
   if (max_units <= 0) stop('max_units should be > 0')
@@ -92,79 +95,91 @@ deploy <- function(
   clhelpers::get_td_access(full_path_to_td_credentials)
   clhelpers::append_log('TD access')
 
-  # rbind recent OHLC with td_priceQuote as it's faster than quantmod::getQuote()
-  # and certainly faster than running updateprices::update_prices()
-  for (i in list.files('prices')) {
-    old_ohlcv <- readRDS(file.path('prices', i))
+  # fix incomplete OHLCV series
+  if (to_execute == 'price_update') {
 
-    new_ohlcv <- rameritrade::td_priceQuote(i)[
-      ,c('openPrice', 'highPrice', 'lowPrice', 'lastPrice')] %>%
-      cbind(Volume = NA, Adjusted = NA, Date = Sys.Date()) %$%
-      xts::xts(.[,1:6], Date)
+    clhelpers::append_log('Start PRICE_UPDATE')
+    prior_market_open_dates <- dates$market_open_dates %>% .[. < Sys.Date()] 
+    has_missing_dates <- parallel::mclapply(list.files('prices'), function(x) {
+      idx <- zoo::index(readRDS(file.path('prices', x)))
+      any(prior_market_open_dates %ni% idx) 
+    }) %>% do.call(what = c) %>% any
 
-    # in case prices were updated same day
-    out <- rbind(old_ohlcv, new_ohlcv) %>% 
-      .[!base::duplicated(zoo::index(.), fromLast = TRUE), ]
-
-    # this will be saved for now, then when update_prices() is run PM/AM,
-    # the duplicated entry will be removed
-    saveRDS(out, file.path('prices', i))
-  }
-  clhelpers::append_log('Recent OHLC')
-
-  # determine if the market is open and if there is a 13h close
-  market_open <- Sys.Date() %in% dates$market_open_dates
-  early_close <- Sys.Date() %in% dates$early_close_dates
-  is_cron <- to_execute == 'cron'
-  is_force <- to_execute == 'force'
-  sys_hour <- lubridate::hour(Sys.time())
-  sys_min <- lubridate::minute(Sys.time())
-  is_early_cl <- sys_min>=55 & market_open & sys_hour==12 & early_close
-  is_normal_cl <- sys_min>=55 & market_open & sys_hour==15 & !early_close
-  clhelpers::append_log('Market op/cl')
-
-  # run order()
-  if ( (is_cron & (is_early_cl | is_normal_cl)) | is_force ) {
-
-    clhelpers::append_log('Start order(\'CRON or FORCE\')')
-    order(
-      trade = TRUE, 
-      model_info = model_info, 
-      max_units = max_units,
-      wealth_scale = wealth_scale, 
-      full_path_to_td_credentials = full_path_to_td_credentials) 
-    clhelpers::append_log('End order(\'CRON or FORCE\')')
-
-  } else if (to_execute == 'report') {
-
-    clhelpers::append_log('Start order(\'REPORT\')')
-    order(
-      trade = FALSE, 
-      model_info = model_info, 
-      max_units = max_units,
-      wealth_scale = wealth_scale, 
-      full_path_to_td_credentials = full_path_to_td_credentials)
-    clhelpers::append_log('End order(\'REPORT\')')
-
-  } else if (to_execute == 'check') {
-
-    clhelpers::append_log('Start CHECK')
-    # fix incomplete OHLCV series
-    for (i in list.files('prices')) {
-      prior_market_open_dates <- dates$market_open_dates %>% .[. < Sys.Date()] 
-      ohlcv <- readRDS(file.path('prices', i))
-      if ( any(prior_market_open_dates %ni% zoo::index(ohlcv)) )
-        updateprices::update_prices(i)
+    if (has_missing_dates) {
+      cat('\nUpdating prices\n\n')
+      # TODO update_prices supports retention of OHLCV series of
+      # differing start dates, but this is presently not supported below
+      # because i don't need this functionality
+      updateprices::update_prices(list.files('prices'))
     }
-    clhelpers::append_log('End CHECK')
+
+    clhelpers::append_log('End PRICE_UPDATE')
+    clhelpers::append_log('===COMPLETE===')
 
   } else {
 
-    cat('\nAutotrade temporal conditions not met; nothing was done\n\n')
+    # rbind recent OHLC with td_priceQuote as it's faster than quantmod::getQuote()
+    # and certainly faster than running updateprices::update_prices()
+    for (i in list.files('prices')) {
+      old_ohlcv <- readRDS(file.path('prices', i))
+
+      new_ohlcv <- rameritrade::td_priceQuote(i)[
+        ,c('openPrice', 'highPrice', 'lowPrice', 'lastPrice')] %>%
+        cbind(Volume = NA, Adjusted = NA, Date = Sys.Date()) %$%
+        xts::xts(.[,1:6], Date)
+
+      # in case prices were updated same day
+      out <- rbind(old_ohlcv, new_ohlcv) %>% 
+        .[!base::duplicated(zoo::index(.), fromLast = TRUE), ]
+
+      # this will be saved for now, then when update_prices() is run PM/AM,
+      # the duplicated entry will be removed
+      saveRDS(out, file.path('prices', i))
+    }
+    clhelpers::append_log('Recent OHLC')
+
+    # determine if the market is open and if there is a 13h close
+    market_open <- Sys.Date() %in% dates$market_open_dates
+    early_close <- Sys.Date() %in% dates$early_close_dates
+    is_cron <- to_execute == 'cron'
+    is_force <- to_execute == 'force'
+    sys_hour <- lubridate::hour(Sys.time())
+    sys_min <- lubridate::minute(Sys.time())
+    is_early_cl <- sys_min>=55 & market_open & sys_hour==12 & early_close
+    is_normal_cl <- sys_min>=55 & market_open & sys_hour==15 & !early_close
+    clhelpers::append_log('Market op/cl')
+
+    # run order()
+    if ( (is_cron & (is_early_cl | is_normal_cl)) | is_force ) {
+
+      clhelpers::append_log('Start order(\'CRON or FORCE\')')
+      order(
+        trade = TRUE, 
+        model_info = model_info, 
+        max_units = max_units,
+        wealth_scale = wealth_scale, 
+        full_path_to_td_credentials = full_path_to_td_credentials) 
+      clhelpers::append_log('End order(\'CRON or FORCE\')')
+      clhelpers::append_log('===COMPLETE===')
+
+    } else if (to_execute == 'report') {
+
+      clhelpers::append_log('Start order(\'REPORT\')')
+      order(
+        trade = FALSE, 
+        model_info = model_info, 
+        max_units = max_units,
+        wealth_scale = wealth_scale, 
+        full_path_to_td_credentials = full_path_to_td_credentials)
+
+    } else {
+
+      cat('\nAutotrade temporal conditions not met; nothing was done\n\n')
+      clhelpers::append_log('===COMPLETE===')
+
+    }
 
   }
-
-  clhelpers::append_log('===COMPLETE===')
 
 }
 

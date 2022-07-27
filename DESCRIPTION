@@ -17,6 +17,7 @@ Imports:
     lubridate,
     xts,
     zoo,
+    parallel,
     clhelpers,
     clmodels,
     updateprices

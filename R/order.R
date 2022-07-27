@@ -7,7 +7,6 @@ if (getRversion() >= '2.15.1')
 #' @importFrom data.table ':='
 #' @importFrom magrittr '%T>%' '%<>%'
 #' @importFrom clhelpers append_log
-
 order <- function(
   trade, 
   model_info,
@@ -25,7 +24,11 @@ order <- function(
   clhelpers::append_log('End order_list')
 
   # do not include account info in output
-  if (!trade) return(order_list[1:2])
+  if (!trade) {
+    clhelpers::append_log('End order(\'REPORT\')')
+    clhelpers::append_log('===COMPLETE===')
+    return(order_list[1:2])
+  }
 
   get_quote <- function(symbol) {
     col_names <- c('symbol', 'bidPrice', 'bidSize', 'askPrice', 'askSize',
@@ -108,7 +111,7 @@ order <- function(
 
   trade_info <- c(buy_info, sell_info)
 
-  if (length(account$positions) > 0) {
+  if (nrow(account$positions) > 0) {
     pos_info <- data.table::data.table(account$positions)[
       , `:=` (date = Sys.Date(),
               borrowStatus = maintenanceRequirement / marketValue)] %>%
@@ -117,6 +120,7 @@ order <- function(
   } else pos_info <- 'tacit' 
   clhelpers::append_log('Position info')
 
+  # TODO this may need to be nrow instead of length in the future
   if (length(account$orders$orderEntry) > 0) {
     order_entry_info <-
       data.table::data.table(account$orders$orderEntry)[
@@ -125,6 +129,7 @@ order <- function(
   } else order_entry_info <- 'tacit'
   clhelpers::append_log('Order entry info')
 
+  # TODO this may need to be nrow instead of length in the future
   if (length(account$orders$orderExecution) > 0) {
     order_exec_info <- data.table::data.table(account$orders$orderExecution)[
       , date := Sys.Date()] %>%
@@ -158,3 +163,4 @@ order <- function(
   clhelpers::append_log('Trade report saved')
 
 }
+

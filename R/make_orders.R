@@ -6,7 +6,6 @@ if (getRversion() >= '2.15.1')
 
 #' @importFrom data.table ':='
 #' @importFrom clhelpers append_log
-
 make_orders <- function(
   model_info, 
   max_units, 
@@ -116,3 +115,4 @@ make_orders <- function(
        accountID = account$balances$accountId)
 
 }
+

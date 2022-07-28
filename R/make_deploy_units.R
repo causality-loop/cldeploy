@@ -9,9 +9,9 @@ if (getRversion() >= '2.15.1')
 make_deploy_units <- function(model_info, max_units)
 {
 
-  asset_units_list <- lapply(names(model_info), function(x) {
+  asset_units_list <- parallel::mclapply(names(model_info), function(x) {
     get(x)(model_info[x])
-  })
+  }, mc.cores = parallel::detectCores()-1)
 
   model_asset_units_dt <- lapply(seq(asset_units_list), function(x) {
     t(asset_units_list[[x]]) %>%

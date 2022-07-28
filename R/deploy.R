@@ -100,10 +100,16 @@ deploy <- function(
 
     clhelpers::append_log('Start PRICE_UPDATE')
     prior_market_open_dates <- dates$market_open_dates %>% .[. < Sys.Date()] 
-    has_missing_dates <- parallel::mclapply(list.files('prices'), function(x) {
-      idx <- zoo::index(readRDS(file.path('prices', x)))
-      any(prior_market_open_dates %ni% idx) 
-    }) %>% do.call(what = c) %>% any
+    has_missing_dates <- parallel::mclapply(
+      list.files('prices'), 
+      function(x) {
+        idx <- zoo::index(readRDS(file.path('prices', x)))
+        any(prior_market_open_dates %ni% idx) 
+      },
+      mc.cores = parallel::detectCores()-1
+    ) %>% 
+      do.call(what = c) %>% 
+      any
 
     if (has_missing_dates) {
       cat('\nUpdating prices\n\n')

@@ -1,7 +1,7 @@
 .datatable.aware = TRUE 
 if (getRversion() >= '2.15.1') 
   utils::globalVariables(c(
-    '.', 'Qty', 'maintenanceRequirement', 'marketValue'), 
+    '.', 'qty', 'maintenanceRequirement', 'marketValue'), 
     utils::packageName()) 
 
 #' @importFrom data.table ':='
@@ -55,7 +55,7 @@ order <- function(
     for (i in 1:nrow(sell_dt)) {
       symbol <- sell_dt[i, symbol]
       security_info_sells[[i]] <- get_quote(symbol)
-      qty <- as.integer(sell_dt[i, Qty])
+      qty <- as.integer(sell_dt[i, qty])
       place_order(order_list$accountID, symbol, qty, 'SELL')
     }
 
@@ -72,7 +72,7 @@ order <- function(
     for (i in 1:nrow(buy_dt)) {
       symbol <- buy_dt[i, symbol]
       security_info_buys[[i]] <- get_quote(symbol)
-      qty <- as.integer(buy_dt[i, Qty])
+      qty <- as.integer(buy_dt[i, qty])
       place_order(order_list$accountID, symbol, qty, 'BUY')
     }
 

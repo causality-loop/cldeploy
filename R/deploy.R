@@ -1,8 +1,6 @@
 if (getRversion() >= '2.15.1') 
   utils::globalVariables(c('.', 'Date'), utils::packageName())
 
-#' @importFrom magrittr '%<>%' '%$%'
-
 #' @title deploy
 #' @description Auto-trade with TD's API.
 #' @param to_execute character, either 'cron', 'force', or 'report', Default: 'cron'
@@ -40,6 +38,7 @@ if (getRversion() >= '2.15.1')
 #' @importFrom clhelpers adj_path append_log
 #' @importFrom updateprices update_prices
 #' @importFrom parallel mclapply
+#' @importFrom magrittr '%<>%' '%$%'
 deploy <- function(
   to_execute = 'cron',
   model_info = c('CAN' = 1.5, 'GAN' = 1, 'KDA_no_treasuries' = 1.5),
@@ -48,29 +47,18 @@ deploy <- function(
   full_path_to_td_credentials = '~/td')
 {
 
+  # set up logging
   clhelpers::append_log('===START===')
+
+  if (!dir.exists('prices'))
+    stop('Please fetch models\' OHLCV series (see cldeploy README on GitHub)')
+  clhelpers::append_log('Price dir check')
 
   # clean inputs
   if (missing(to_execute)) to_execute <- 'cron'
   if (to_execute %ni% c('cron', 'force', 'report', 'price_update'))
-    stop("to_execute should be either 'cron', 'force', 'report', or 'price_update'")
-  if (length(model_info) <= 0)
-    stop('Length of model_info should be > 0')
-  if (max_units <= 0) stop('max_units should be > 0')
-  if (any(model_info > max_units)) stop('model_info cannot exceed max_units')
-  if (any(model_info <= 0)) stop('model_info should be > 0')
-  if (wealth_scale > 1) stop('wealth_scale should be <= 1')
-  if (wealth_scale <= 0) stop('wealth_scale should be > 0')
-  if (!dir.exists(full_path_to_td_credentials))
-    stop('full_path_to_td_credentials does not exist')
-  fp_files <- c('consumerKey.rds', 'refreshToken.rds')
-  full_path_to_td_credentials %<>% clhelpers::adj_path()
-  if (!all(fp_files %in% list.files(full_path_to_td_credentials)))
-    stop('Please add necessary files to TD directory (see documentation)')
-
-  # set up logging
-
-  clhelpers::append_log('Inputs')
+    stop("to_execute must = 'cron', 'force', 'report', or 'price_update'")
+  clhelpers::append_log('Inputs1')
 
   # set timezone on gnu/linux
   if (!(Sys.timezone() == 'America/New_York')) {
@@ -91,13 +79,13 @@ deploy <- function(
   }
   clhelpers::append_log('Dates')
 
-  # handle prices
-  clhelpers::get_td_access(full_path_to_td_credentials)
-  clhelpers::append_log('TD access')
-
-  # fix incomplete OHLCV series
-  if (to_execute == 'price_update') {
-
+  # fix incomplete OHLCV series if needed
+  # this should run automatically, although it does add to the time needed
+  # to complete autotrading, so it's thereby advisable to run
+  # deploy(to_execute='price_update') pre-/post-market instead so that 
+  # the prices are up to date by the opening bell
+  update_prices_if_missing <- function()
+  {
     clhelpers::append_log('Start PRICE_UPDATE')
     prior_market_open_dates <- dates$market_open_dates %>% .[. < Sys.Date()] 
     has_missing_dates <- parallel::mclapply(
@@ -121,10 +109,36 @@ deploy <- function(
 
     clhelpers::append_log('End PRICE_UPDATE')
     clhelpers::append_log('===COMPLETE===')
+  }
+
+  update_prices_if_missing()
+
+  if (to_execute == 'price_update') {
+
+    update_prices_if_missing()
 
   } else {
 
-    # rbind recent OHLC with td_priceQuote as it's faster than quantmod::getQuote()
+    if (length(model_info) <= 0)
+      stop('Length of model_info should be > 0')
+    if (max_units <= 0) stop('max_units should be > 0')
+    if (any(model_info > max_units)) stop('model_info cannot exceed max_units')
+    if (any(model_info <= 0)) stop('model_info should be > 0')
+    if (wealth_scale > 1) stop('wealth_scale should be <= 1')
+    if (wealth_scale <= 0) stop('wealth_scale should be > 0')
+    if (!dir.exists(full_path_to_td_credentials))
+      stop('full_path_to_td_credentials does not exist')
+    fp_files <- c('consumerKey.rds', 'refreshToken.rds')
+    full_path_to_td_credentials %<>% clhelpers::adj_path()
+    if (!all(fp_files %in% list.files(full_path_to_td_credentials)))
+      stop('Please add necessary files to TD directory (see documentation)')
+    clhelpers::append_log('Inputs2')
+
+    # add latest OHLC to the existing price series as quickly as possible
+    clhelpers::get_td_access(full_path_to_td_credentials)
+    clhelpers::append_log('TD access')
+
+    # rbind recent OHLC with rameritrade::td_priceQuote() as it's faster than quantmod::getQuote()
     # and certainly faster than running updateprices::update_prices()
     for (i in list.files('prices')) {
       old_ohlcv <- readRDS(file.path('prices', i))

@@ -38,6 +38,7 @@ if (getRversion() >= '2.15.1')
 #' @importFrom clhelpers adj_path append_log
 #' @importFrom updateprices update_prices
 #' @importFrom parallel mclapply
+#' @importFrom stats na.omit
 #' @importFrom magrittr '%<>%' '%$%'
 deploy <- function(
   to_execute = 'cron',
@@ -91,7 +92,9 @@ deploy <- function(
     has_missing_dates <- parallel::mclapply(
       list.files('prices'), 
       function(x) {
-        idx <- zoo::index(readRDS(file.path('prices', x)))
+        idx <- readRDS(file.path('prices', x)) %>%
+          stats::na.omit() %>%
+          zoo::index()
         any(prior_market_open_dates %ni% idx) 
       },
       mc.cores = parallel::detectCores()-1
